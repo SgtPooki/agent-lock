@@ -1,0 +1,33 @@
+{
+  "name": "fixity",
+  "version": "0.1.0",
+  "description": "Pin, verify, and prove agent supply-chain artifacts (skills, MCP configs, prompts) by CID on Filecoin Onchain Cloud. Review once, run that exact content forever.",
+  "type": "module",
+  "bin": {
+    "fixity": "./bin/fixity.js"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.js'"
+  },
+  "keywords": [
+    "filecoin",
+    "filecoin-onchain-cloud",
+    "ai-agents",
+    "supply-chain",
+    "content-addressed",
+    "skills",
+    "provenance",
+    "fixity"
+  ],
+  "author": "Russell Dempsey",
+  "license": "Apache-2.0 OR MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@filoz/synapse-sdk": "^0.41.0",
+    "filecoin-pin": "^0.23.2",
+    "multiformats": "^13.0.0",
+    "viem": "^2.0.0"
+  }
+}
