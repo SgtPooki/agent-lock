@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * fixity — pin, verify, and prove agent supply-chain artifacts by CID on
+ * fixity: pin, verify, and prove agent supply-chain artifacts by CID on
  * Filecoin Onchain Cloud. Review once, run that exact content forever.
  *
  *   fixity publish <dir>     pack + sign + upload an artifact; prints its CID
@@ -82,7 +82,7 @@ async function cmdVerify(args) {
   try {
     manifest = JSON.parse(await fs.readFile(path.join(dir, MANIFEST_NAME), 'utf8'))
   } catch {
-    die(`no ${MANIFEST_NAME} in ${dir} — is this a fixity-installed artifact?`)
+    die(`no ${MANIFEST_NAME} in ${dir}.. run fixity install first?`)
   }
   console.log(c.bold(`\n  Verifying ${manifest.name} @ ${manifest.artifactVersion}\n`))
   const self = await verifyManifestSelf(manifest)
@@ -96,7 +96,7 @@ async function cmdVerify(args) {
     if (manifest._cid) console.log(`  ${c.dim(`pinned at CID ${manifest._cid}`)}`)
     console.log()
   } else {
-    console.log(`\n  ${c.red('✗ DRIFT — local files differ from the reviewed, pinned artifact.')}`)
+    console.log(`\n  ${c.red('✗ DRIFT: local files differ from the reviewed, pinned artifact.')}`)
     if (manifest._cid) console.log(`  ${c.dim(`reinstall the trusted bytes: fixity install ${manifest._cid}`)}`)
     console.log()
     process.exit(1)
@@ -138,7 +138,7 @@ try {
     case 'verify': await cmdVerify(args); break
     case 'proven': await cmdProven(args); break
     default:
-      console.log(`fixity — pin, verify, and prove agent artifacts by CID on Filecoin
+      console.log(`fixity: pin, verify, and prove agent artifacts by CID on Filecoin
 
   fixity publish <dir>     pack + sign + upload an artifact; prints its CID
   fixity install <cid>     fetch by CID, verify signature + hashes, unpack
