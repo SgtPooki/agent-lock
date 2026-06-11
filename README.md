@@ -46,16 +46,44 @@ fixity verify ./my-skill      # flags any locally swapped file in red, exits 1
 
 Change one byte and the CID changes, so a swapped artifact simply cannot resolve from the CID you reviewed. There is no version to silently update.
 
+## Catching drift automatically
+
+`verify` on its own is manual. To catch a modified skill the moment it matters, wire fixity into Claude Code at two points (full block in [examples/claude-settings.json](examples/claude-settings.json), drop into `~/.claude/settings.json` or a project's `.claude/settings.json`):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "fixity verify --all" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Skill", "hooks": [{ "type": "command", "command": "fixity hook" }] }
+    ]
+  }
+}
+```
+
+- **SessionStart** runs `fixity verify --all ~/.claude/skills` when a session begins, so a skill swapped while you were away is flagged before any work starts.
+- **PreToolUse** with matcher `Skill` runs `fixity hook` right before a skill is invoked. The hook reads Claude Code's tool payload on stdin, verifies that specific skill, and on drift emits a `permissionDecision: deny` and exits 2, so the harness **blocks the tampered skill before it runs**. Skills fixity does not manage pass through untouched.
+
+For instant detection during development (independent of any harness), `fixity watch ~/.claude/skills` re-verifies on every file change and prints drift the moment it lands.
+
+The honest boundary: the hook gates skills fixity manages and that route through the Skill tool. It is not a sandbox; a skill that rewrites its own directory between the SessionStart sweep and invocation is still caught by the PreToolUse gate, but content fixity never pinned is outside its scope.
+
 ## CLI
 
 ```
 fixity publish <dir> [--name X] [--version Y]   pack + sign + upload; prints the CID
 fixity install <cid> [--to <dir>]               fetch by CID, verify, unpack
 fixity verify [dir]                             re-hash installed files vs the pinned manifest
+fixity verify --all [dir]                       sweep every managed artifact (default ~/.claude/skills)
 fixity proven <cid>                             retrievability + signed-inventory check
+fixity hook                                     Claude Code PreToolUse gate (reads hook JSON on stdin)
+fixity watch [dir]                              re-verify on every file change
 
 env: PRIVATE_KEY (publish only), FIXITY_NETWORK (calibration|mainnet),
-     FIXITY_GATEWAY, FIXITY_MAX_TOPUP_USDFC (auto-deposit cap, default 5),
+     FIXITY_GATEWAY, FIXITY_SKILLS_DIR (default ~/.claude/skills),
+     FIXITY_MAX_TOPUP_USDFC (auto-deposit cap, default 5),
      FIXITY_AUTO_FUND=1 (required for auto-deposit on mainnet)
 ```
 

@@ -1,0 +1,28 @@
+{
+  "_comment": "Drop these blocks into ~/.claude/settings.json (all projects) or .claude/settings.json (one project). SessionStart sweeps every fixity-managed skill when a session begins; PreToolUse blocks a tampered skill the moment it's invoked, before it runs.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fixity verify --all",
+            "statusMessage": "Verifying skill integrity (fixity)..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fixity hook"
+          }
+        ]
+      }
+    ]
+  }
+}

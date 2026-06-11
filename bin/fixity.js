@@ -14,7 +14,10 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { MANIFEST_NAME, verifyAgainstDisk, verifyManifestSelf } from '../src/manifest.js'
+import os from 'node:os'
+import { MANIFEST_NAME, isManaged, verifyInstalled, verifyManifestSelf } from '../src/manifest.js'
+
+const SKILLS_DIR = process.env.FIXITY_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills')
 
 const NETWORK = process.env.FIXITY_NETWORK || 'calibration'
 const c = {
@@ -77,21 +80,17 @@ async function cmdInstall(args) {
 }
 
 async function cmdVerify(args) {
+  if (args.includes('--all')) return cmdVerifyAll(args)
   const dir = args[0] || process.cwd()
-  let manifest
-  try {
-    manifest = JSON.parse(await fs.readFile(path.join(dir, MANIFEST_NAME), 'utf8'))
-  } catch {
-    die(`no ${MANIFEST_NAME} in ${dir}.. run fixity install first?`)
-  }
+  if (!(await isManaged(dir))) die(`no ${MANIFEST_NAME} in ${dir}.. run fixity install first?`)
+  const { manifest, self, disk, ok } = await verifyInstalled(dir)
+
   console.log(c.bold(`\n  Verifying ${manifest.name} @ ${manifest.artifactVersion}\n`))
-  const self = await verifyManifestSelf(manifest)
   console.log(self.digestOk ? `  ${c.green('✓')} manifest digest intact` : `  ${c.red('✗')} manifest digest altered`)
   if (self.signatureOk !== null) console.log(self.signatureOk ? `  ${c.green('✓')} publisher signature valid (${self.signer})` : `  ${c.red('✗')} publisher signature INVALID`)
-
-  const disk = await verifyAgainstDisk(dir, manifest)
   for (const d of disk.drift) console.log(`  ${c.red('✗')} ${d.path}: ${c.red(d.reason)}`)
-  if (disk.ok && self.digestOk && self.signatureOk !== false) {
+
+  if (ok) {
     console.log(`  ${c.green('✓')} all ${manifest.files.length} files match the pinned manifest`)
     if (manifest._cid) console.log(`  ${c.dim(`pinned at CID ${manifest._cid}`)}`)
     console.log()
@@ -100,6 +99,122 @@ async function cmdVerify(args) {
     if (manifest._cid) console.log(`  ${c.dim(`reinstall the trusted bytes: fixity install ${manifest._cid}`)}`)
     console.log()
     process.exit(1)
+  }
+}
+
+/** Sweep every fixity-managed artifact under a directory (default ~/.claude/skills). */
+async function cmdVerifyAll(args) {
+  const root = args.filter((a) => !a.startsWith('--'))[0] || SKILLS_DIR
+  let entries = []
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true })
+  } catch {
+    die(`cannot read ${root}`)
+  }
+  const dirs = []
+  if (await isManaged(root)) dirs.push(root)
+  for (const e of entries) if (e.isDirectory() && (await isManaged(path.join(root, e.name)))) dirs.push(path.join(root, e.name))
+
+  if (dirs.length === 0) {
+    console.log(c.dim(`  no fixity-managed artifacts under ${root}`))
+    return
+  }
+  console.log(c.bold(`\n  Verifying ${dirs.length} artifact(s) under ${root}\n`))
+  let bad = 0
+  for (const d of dirs) {
+    const { manifest, ok, disk, self } = await verifyInstalled(d)
+    if (ok) {
+      console.log(`  ${c.green('✓')} ${manifest.name} @ ${manifest.artifactVersion}`)
+    } else {
+      bad++
+      const why = !self.digestOk ? 'manifest altered' : self.signatureOk === false ? 'bad signature' : `${disk.drift.length} file(s) drifted`
+      console.log(`  ${c.red('✗')} ${manifest.name}: ${c.red(why)}`)
+      for (const dr of disk.drift) console.log(`      ${c.dim(`${dr.path}: ${dr.reason}`)}`)
+    }
+  }
+  console.log()
+  if (bad > 0) {
+    console.log(`  ${c.red(`✗ ${bad} of ${dirs.length} artifact(s) drifted from their pinned bytes.`)}\n`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Claude Code PreToolUse hook. Reads the hook JSON on stdin, finds the skill
+ * being invoked, verifies it, and on drift emits a deny decision + exit 2 so
+ * the harness blocks the tampered skill BEFORE it runs.
+ * Wire as: { "matcher": "Skill", "hooks": [{ "type": "command", "command": "fixity hook" }] }
+ */
+async function cmdHook() {
+  let payload = {}
+  try {
+    const chunks = []
+    for await (const ch of process.stdin) chunks.push(ch)
+    payload = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+  } catch {
+    process.exit(0) // never break the harness on malformed input
+  }
+  const skill = payload.tool_input?.skill_name || payload.tool_input?.name
+  if (!skill) process.exit(0)
+  const dir = path.join(SKILLS_DIR, skill)
+  // Only gate skills fixity manages; unmanaged skills pass through untouched.
+  if (!(await isManaged(dir))) process.exit(0)
+
+  const { ok, disk, self } = await verifyInstalled(dir).catch(() => ({ ok: false, disk: { drift: [] }, self: {} }))
+  if (ok) process.exit(0)
+
+  const why = !self.digestOk ? 'manifest altered' : self.signatureOk === false ? 'publisher signature invalid' : `${disk.drift.length} file(s) differ from the pinned, reviewed bytes`
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `fixity blocked skill "${skill}": ${why}. Reinstall the trusted bytes with \`fixity install <cid>\`.`,
+    },
+  }))
+  process.exit(2)
+}
+
+/** Watch a directory and re-verify the moment any managed artifact changes. */
+async function cmdWatch(args) {
+  const root = args[0] || SKILLS_DIR
+  console.log(c.bold(`\n  fixity watch: ${root}`))
+  console.log(c.dim('  re-verifies on every change; Ctrl-C to stop\n'))
+  const recheck = debounce(async (sub) => {
+    const dir = await nearestManaged(path.join(root, sub))
+    if (!dir) return
+    const { manifest, ok, disk } = await verifyInstalled(dir).catch(() => ({ ok: false, disk: { drift: [] } }))
+    const t = new Date().toISOString().slice(11, 19)
+    if (ok) console.log(`  ${c.dim(t)} ${c.green('✓')} ${manifest?.name ?? dir} intact`)
+    else {
+      console.log(`  ${c.dim(t)} ${c.red('✗ DRIFT')} ${manifest?.name ?? dir}`)
+      for (const d of disk.drift) console.log(`      ${c.red(`${d.path}: ${d.reason}`)}`)
+    }
+  }, 150)
+  const { watch } = await import('node:fs')
+  try {
+    watch(root, { recursive: true }, (_e, file) => file && recheck(file))
+  } catch (e) {
+    die(`watch failed (${e.message}); recursive watch needs Node 20+ and a supported platform`)
+  }
+}
+
+/** Walk up from a path to the nearest dir containing a fixity manifest. */
+async function nearestManaged(p) {
+  let cur = p
+  for (let i = 0; i < 8; i++) {
+    if (await isManaged(cur)) return cur
+    const up = path.dirname(cur)
+    if (up === cur) break
+    cur = up
+  }
+  return null
+}
+
+function debounce(fn, ms) {
+  const timers = new Map()
+  return (key) => {
+    clearTimeout(timers.get(key))
+    timers.set(key, setTimeout(() => fn(key), ms))
   }
 }
 
@@ -137,15 +252,21 @@ try {
     case 'install': await cmdInstall(args); break
     case 'verify': await cmdVerify(args); break
     case 'proven': await cmdProven(args); break
+    case 'hook': await cmdHook(); break
+    case 'watch': await cmdWatch(args); break
     default:
       console.log(`fixity: pin, verify, and prove agent artifacts by CID on Filecoin
 
-  fixity publish <dir>     pack + sign + upload an artifact; prints its CID
-  fixity install <cid>     fetch by CID, verify signature + hashes, unpack
-  fixity verify [dir]      re-hash installed files against the pinned manifest
-  fixity proven <cid>      show proof status for a published artifact
+  fixity publish <dir>       pack + sign + upload an artifact; prints its CID
+  fixity install <cid>       fetch by CID, verify signature + hashes, unpack
+  fixity verify [dir]        re-hash installed files against the pinned manifest
+  fixity verify --all [dir]  sweep every managed artifact (default ~/.claude/skills)
+  fixity proven <cid>        show proof status for a published artifact
+  fixity hook                Claude Code PreToolUse gate (reads hook JSON on stdin)
+  fixity watch [dir]         re-verify on every file change
 
-  env: PRIVATE_KEY (publish), FIXITY_NETWORK (calibration|mainnet), FIXITY_GATEWAY`)
+  env: PRIVATE_KEY (publish), FIXITY_NETWORK (calibration|mainnet),
+       FIXITY_GATEWAY, FIXITY_SKILLS_DIR (default ~/.claude/skills)`)
   }
 } catch (err) {
   die(err.message)
