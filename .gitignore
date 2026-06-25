@@ -1,4 +1,6 @@
 node_modules/
-.fixity/
+.agent-lock/
+.env
+.env.*
 *.log
 bafy*/
