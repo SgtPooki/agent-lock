@@ -38,5 +38,8 @@
     "filecoin-pin": "^0.23.2",
     "multiformats": "^13.0.0",
     "viem": "^2.0.0"
+  },
+  "overrides": {
+    "ws": "^8.21.0"
   }
 }
