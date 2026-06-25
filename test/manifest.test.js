@@ -9,7 +9,7 @@ import { buildManifest, verifyAgainstDisk, verifyManifestSelf } from '../src/man
 const KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
 async function tmpDir(files) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fixity-test-'))
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lock-test-'))
   for (const [p, content] of Object.entries(files)) {
     const dest = path.join(dir, p)
     await fs.mkdir(path.dirname(dest), { recursive: true })

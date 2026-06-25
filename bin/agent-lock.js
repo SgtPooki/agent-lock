@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * fixity: pin, verify, and prove agent supply-chain artifacts by CID on
+ * agent-lock: pin, verify, and prove agent supply-chain artifacts by CID on
  * Filecoin Onchain Cloud. Review once, run that exact content forever.
  *
- *   fixity publish <dir>     pack + sign + upload an artifact; prints its CID
- *   fixity install <cid>     fetch by CID, verify signature + hashes, unpack
- *   fixity verify [dir]      re-hash installed files against the pinned manifest
- *   fixity proven <cid>      show PDP proof status for a published artifact
+ *   agent-lock publish <dir>     pack + sign + upload an artifact; prints its CID
+ *   agent-lock install <cid>     fetch by CID, verify signature + hashes, unpack
+ *   agent-lock verify [dir]      re-hash installed files against the pinned manifest
+ *   agent-lock proven <cid>      show PDP proof status for a published artifact
  *
- * Env: PRIVATE_KEY (publish only), FIXITY_NETWORK (calibration|mainnet),
- *      FIXITY_GATEWAY, FIXITY_DIR (default ./.fixity for install metadata)
+ * Env: PRIVATE_KEY (publish only), AGENT_LOCK_NETWORK (calibration|mainnet),
+ *      AGENT_LOCK_GATEWAY, AGENT_LOCK_DIR (default ./.agent-lock for install metadata)
  */
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
@@ -17,20 +17,20 @@ import process from 'node:process'
 import os from 'node:os'
 import { MANIFEST_NAME, isManaged, verifyInstalled, verifyManifestSelf } from '../src/manifest.js'
 
-const SKILLS_DIR = process.env.FIXITY_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills')
+const SKILLS_DIR = process.env.AGENT_LOCK_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills')
 
-const NETWORK = process.env.FIXITY_NETWORK || 'calibration'
+const NETWORK = process.env.AGENT_LOCK_NETWORK || 'calibration'
 const c = {
   green: (s) => `\x1b[32m${s}\x1b[0m`, red: (s) => `\x1b[31m${s}\x1b[0m`,
   yellow: (s) => `\x1b[33m${s}\x1b[0m`, dim: (s) => `\x1b[2m${s}\x1b[0m`,
   bold: (s) => `\x1b[1m${s}\x1b[0m`, cyan: (s) => `\x1b[36m${s}\x1b[0m`,
 }
-const die = (m) => { console.error(`${c.red('fixity:')} ${m}`); process.exit(1) }
+const die = (m) => { console.error(`${c.red('agent-lock:')} ${m}`); process.exit(1) }
 const short = (h) => (h ? `${h.slice(0, 14)}…` : '(none)')
 
 async function cmdPublish(args) {
   const dir = args[0]
-  if (!dir) die('usage: fixity publish <dir> [--name X] [--version Y]')
+  if (!dir) die('usage: agent-lock publish <dir> [--name X] [--version Y]')
   const privateKey = process.env.PRIVATE_KEY
   if (!privateKey) die('PRIVATE_KEY env var is required to publish')
   const name = flag(args, '--name')
@@ -46,13 +46,13 @@ async function cmdPublish(args) {
   console.log(`  ${c.bold('CID')}        : ${c.bold(r.cid)}`)
   console.log(`  piece      : ${r.pieceCid}`)
   console.log(`  gateway    : ${r.gatewayURL}`)
-  console.log(`\n  install with: ${c.cyan(`fixity install ${r.cid}`)}\n`)
+  console.log(`\n  install with: ${c.cyan(`agent-lock install ${r.cid}`)}\n`)
   process.exit(0)
 }
 
 async function cmdInstall(args) {
   const cid = args[0]
-  if (!cid) die('usage: fixity install <cid> [--to <dir>]')
+  if (!cid) die('usage: agent-lock install <cid> [--to <dir>]')
   const to = flag(args, '--to') || path.join(process.cwd(), cid)
   const { fetchManifest, fetchUnderCid } = await import('../src/foc.js')
 
@@ -82,7 +82,7 @@ async function cmdInstall(args) {
 async function cmdVerify(args) {
   if (args.includes('--all')) return cmdVerifyAll(args)
   const dir = args[0] || process.cwd()
-  if (!(await isManaged(dir))) die(`no ${MANIFEST_NAME} in ${dir}.. run fixity install first?`)
+  if (!(await isManaged(dir))) die(`no ${MANIFEST_NAME} in ${dir}.. run agent-lock install first?`)
   const { manifest, self, disk, ok } = await verifyInstalled(dir)
 
   console.log(c.bold(`\n  Verifying ${manifest.name} @ ${manifest.artifactVersion}\n`))
@@ -96,13 +96,13 @@ async function cmdVerify(args) {
     console.log()
   } else {
     console.log(`\n  ${c.red('✗ DRIFT: local files differ from the reviewed, pinned artifact.')}`)
-    if (manifest._cid) console.log(`  ${c.dim(`reinstall the trusted bytes: fixity install ${manifest._cid}`)}`)
+    if (manifest._cid) console.log(`  ${c.dim(`reinstall the trusted bytes: agent-lock install ${manifest._cid}`)}`)
     console.log()
     process.exit(1)
   }
 }
 
-/** Sweep every fixity-managed artifact under a directory (default ~/.claude/skills). */
+/** Sweep every agent-lock-managed artifact under a directory (default ~/.claude/skills). */
 async function cmdVerifyAll(args) {
   const root = args.filter((a) => !a.startsWith('--'))[0] || SKILLS_DIR
   let entries = []
@@ -116,7 +116,7 @@ async function cmdVerifyAll(args) {
   for (const e of entries) if (e.isDirectory() && (await isManaged(path.join(root, e.name)))) dirs.push(path.join(root, e.name))
 
   if (dirs.length === 0) {
-    console.log(c.dim(`  no fixity-managed artifacts under ${root}`))
+    console.log(c.dim(`  no agent-lock-managed artifacts under ${root}`))
     return
   }
   console.log(c.bold(`\n  Verifying ${dirs.length} artifact(s) under ${root}\n`))
@@ -143,7 +143,7 @@ async function cmdVerifyAll(args) {
  * Claude Code PreToolUse hook. Reads the hook JSON on stdin, finds the skill
  * being invoked, verifies it, and on drift emits a deny decision + exit 2 so
  * the harness blocks the tampered skill BEFORE it runs.
- * Wire as: { "matcher": "Skill", "hooks": [{ "type": "command", "command": "fixity hook" }] }
+ * Wire as: { "matcher": "Skill", "hooks": [{ "type": "command", "command": "agent-lock hook" }] }
  */
 async function cmdHook() {
   let payload = {}
@@ -157,7 +157,7 @@ async function cmdHook() {
   const skill = payload.tool_input?.skill_name || payload.tool_input?.name
   if (!skill) process.exit(0)
   const dir = path.join(SKILLS_DIR, skill)
-  // Only gate skills fixity manages; unmanaged skills pass through untouched.
+  // Only gate skills agent-lock manages; unmanaged skills pass through untouched.
   if (!(await isManaged(dir))) process.exit(0)
 
   const { ok, disk, self } = await verifyInstalled(dir).catch(() => ({ ok: false, disk: { drift: [] }, self: {} }))
@@ -168,7 +168,7 @@ async function cmdHook() {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: `fixity blocked skill "${skill}": ${why}. Reinstall the trusted bytes with \`fixity install <cid>\`.`,
+      permissionDecisionReason: `agent-lock blocked skill "${skill}": ${why}. Reinstall the trusted bytes with \`agent-lock install <cid>\`.`,
     },
   }))
   process.exit(2)
@@ -177,7 +177,7 @@ async function cmdHook() {
 /** Watch a directory and re-verify the moment any managed artifact changes. */
 async function cmdWatch(args) {
   const root = args[0] || SKILLS_DIR
-  console.log(c.bold(`\n  fixity watch: ${root}`))
+  console.log(c.bold(`\n  agent-lock watch: ${root}`))
   console.log(c.dim('  re-verifies on every change; Ctrl-C to stop\n'))
   const recheck = debounce(async (sub) => {
     const dir = await nearestManaged(path.join(root, sub))
@@ -198,7 +198,7 @@ async function cmdWatch(args) {
   }
 }
 
-/** Walk up from a path to the nearest dir containing a fixity manifest. */
+/** Walk up from a path to the nearest dir containing a agent-lock manifest. */
 async function nearestManaged(p) {
   let cur = p
   for (let i = 0; i < 8; i++) {
@@ -220,7 +220,7 @@ function debounce(fn, ms) {
 
 async function cmdProven(args) {
   const cid = args[0]
-  if (!cid) die('usage: fixity proven <cid>')
+  if (!cid) die('usage: agent-lock proven <cid>')
   // Read-side proof check: confirm the artifact is retrievable and its manifest
   // verifies. (Full onchain PDP-epoch lookup via StateView is the next step;
   // for now this proves live retrievability + integrity, which is the demo's point.)
@@ -255,18 +255,18 @@ try {
     case 'hook': await cmdHook(); break
     case 'watch': await cmdWatch(args); break
     default:
-      console.log(`fixity: pin, verify, and prove agent artifacts by CID on Filecoin
+      console.log(`agent-lock: pin, verify, and prove agent artifacts by CID on Filecoin
 
-  fixity publish <dir>       pack + sign + upload an artifact; prints its CID
-  fixity install <cid>       fetch by CID, verify signature + hashes, unpack
-  fixity verify [dir]        re-hash installed files against the pinned manifest
-  fixity verify --all [dir]  sweep every managed artifact (default ~/.claude/skills)
-  fixity proven <cid>        show proof status for a published artifact
-  fixity hook                Claude Code PreToolUse gate (reads hook JSON on stdin)
-  fixity watch [dir]         re-verify on every file change
+  agent-lock publish <dir>       pack + sign + upload an artifact; prints its CID
+  agent-lock install <cid>       fetch by CID, verify signature + hashes, unpack
+  agent-lock verify [dir]        re-hash installed files against the pinned manifest
+  agent-lock verify --all [dir]  sweep every managed artifact (default ~/.claude/skills)
+  agent-lock proven <cid>        show proof status for a published artifact
+  agent-lock hook                Claude Code PreToolUse gate (reads hook JSON on stdin)
+  agent-lock watch [dir]         re-verify on every file change
 
-  env: PRIVATE_KEY (publish), FIXITY_NETWORK (calibration|mainnet),
-       FIXITY_GATEWAY, FIXITY_SKILLS_DIR (default ~/.claude/skills)`)
+  env: PRIVATE_KEY (publish), AGENT_LOCK_NETWORK (calibration|mainnet),
+       AGENT_LOCK_GATEWAY, AGENT_LOCK_SKILLS_DIR (default ~/.claude/skills)`)
   }
 } catch (err) {
   die(err.message)

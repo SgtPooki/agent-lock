@@ -1,7 +1,7 @@
 /**
- * Filecoin Onchain Cloud upload + retrieval for fixity.
+ * Filecoin Onchain Cloud upload + retrieval for agent-lock.
  *
- * publish() packs an artifact directory (its files + a signed fixity.json) into
+ * publish() packs an artifact directory (its files + a signed agent-lock.json) into
  * a UnixFS CAR and uploads to Warm Storage via the Synapse SDK (filecoin-pin
  * core). The IPFS root CID is the integrity anchor; daily PDP proofs then
  * attest the bytes still exist. retrieve() pulls files back by CID over the
@@ -17,7 +17,7 @@ import { checkUploadReadiness, executeUpload } from 'filecoin-pin/core/upload'
 import { buildManifest, MANIFEST_NAME, normalizeKey } from './manifest.js'
 
 const CHAINS = { calibration, mainnet }
-const GATEWAY = process.env.FIXITY_GATEWAY || 'https://dweb.link'
+const GATEWAY = process.env.AGENT_LOCK_GATEWAY || 'https://dweb.link'
 
 function makeLogger(verbose) {
   const log = (level) => (...a) => {
@@ -50,7 +50,7 @@ export async function publish(dir, opts) {
   const manifest = await buildManifest(dir, { privateKey, name: opts.name, version: opts.version })
 
   // Stage a copy of the dir with the manifest written in, so both land under one root CID.
-  const stageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fixity-pub-'))
+  const stageDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lock-pub-'))
   await fs.cp(dir, stageDir, { recursive: true })
   await fs.writeFile(path.join(stageDir, MANIFEST_NAME), `${JSON.stringify(manifest, null, 2)}\n`)
 
@@ -66,14 +66,14 @@ export async function publish(dir, opts) {
     let readiness = await checkUploadReadiness({ synapse, fileSize: carBytes.length })
     const shortfall = readiness.capacity?.issues?.insufficientDeposit
     if (readiness.status !== 'ready' && shortfall && (readiness.walletUsdfcBalance ?? 0n) > 0n) {
-      if (network === 'mainnet' && process.env.FIXITY_AUTO_FUND !== '1') {
-        throw new Error('deposit short; set FIXITY_AUTO_FUND=1 to auto-deposit on mainnet, or deposit USDFC manually.')
+      if (network === 'mainnet' && process.env.AGENT_LOCK_AUTO_FUND !== '1') {
+        throw new Error('deposit short; set AGENT_LOCK_AUTO_FUND=1 to auto-deposit on mainnet, or deposit USDFC manually.')
       }
       const ONE = 10n ** 18n
-      const cap = BigInt(Math.round(Number(process.env.FIXITY_MAX_TOPUP_USDFC || '5') * 1e6)) * 10n ** 12n
+      const cap = BigInt(Math.round(Number(process.env.AGENT_LOCK_MAX_TOPUP_USDFC || '5') * 1e6)) * 10n ** 12n
       let topUp = shortfall * 2n > ONE ? shortfall * 2n : ONE
       if (topUp > cap) topUp = cap
-      if (topUp < shortfall) throw new Error(`shortfall exceeds FIXITY_MAX_TOPUP_USDFC; raise the cap or deposit manually.`)
+      if (topUp < shortfall) throw new Error(`shortfall exceeds AGENT_LOCK_MAX_TOPUP_USDFC; raise the cap or deposit manually.`)
       onStatus(`depositing ${Number(topUp) / 1e18} USDFC into Filecoin Pay`)
       await depositUSDFC(synapse, topUp)
       readiness = await checkUploadReadiness({ synapse, fileSize: carBytes.length })
@@ -87,9 +87,9 @@ export async function publish(dir, opts) {
     onStatus(`uploading ${carBytes.length} bytes to Warm Storage`)
     const upload = await executeUpload(synapse, carBytes, rootCid, {
       logger,
-      contextId: `fixity-${manifest.name}-${manifest.publishedAt}`,
+      contextId: `agent-lock-${manifest.name}-${manifest.publishedAt}`,
       ipniValidation: { enabled: false },
-      pieceMetadata: { fixityName: manifest.name, fixityDigest: manifest.inventoryDigest },
+      pieceMetadata: { lockName: manifest.name, lockDigest: manifest.inventoryDigest },
     })
 
     return {
@@ -116,7 +116,7 @@ export async function fetchUnderCid(cid, relPath) {
   return Buffer.from(await res.arrayBuffer())
 }
 
-/** Fetch and parse the fixity manifest for a CID. */
+/** Fetch and parse the agent-lock manifest for a CID. */
 export async function fetchManifest(cid) {
   const bytes = await fetchUnderCid(cid, MANIFEST_NAME)
   return JSON.parse(bytes.toString('utf8'))
