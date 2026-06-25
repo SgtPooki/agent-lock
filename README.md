@@ -8,7 +8,7 @@ Agents load skills, MCP configs, and prompts from marketplaces and repos that ca
 
 agent-lock makes the swap impossible instead of merely detectable. You publish an artifact and get a CID, a content address that is the hash of the bytes. Anyone installs by that CID and gets exactly the bytes you reviewed, signed by you, provably still stored on Filecoin. Change one byte upstream and the CID changes, so the old CID can never resolve to the tampered version.
 
-agent-lock gives an artifact *fixity* — the digital-preservation term for "the property of being unchanged, and the practice of proving it." That is the whole product.
+agent-lock gives an artifact *fixity*: the digital-preservation term for "the property of being unchanged, and the practice of proving it." That is the whole product.
 
 ## What it does
 
