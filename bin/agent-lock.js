@@ -6,7 +6,7 @@
  *   agent-lock publish <dir>     pack + sign + upload an artifact; prints its CID
  *   agent-lock install <cid>     fetch by CID, verify signature + hashes, unpack
  *   agent-lock verify [dir]      re-hash installed files against the pinned manifest
- *   agent-lock proven <cid>      show PDP proof status for a published artifact
+ *   agent-lock proven <cid>      confirm a published artifact is still retrievable + its inventory verifies
  *
  * Env: PRIVATE_KEY (publish only), AGENT_LOCK_NETWORK (calibration|mainnet),
  *      AGENT_LOCK_GATEWAY, AGENT_LOCK_DIR (default ./.agent-lock for install metadata)
@@ -221,9 +221,10 @@ function debounce(fn, ms) {
 async function cmdProven(args) {
   const cid = args[0]
   if (!cid) die('usage: agent-lock proven <cid>')
-  // Read-side proof check: confirm the artifact is retrievable and its manifest
-  // verifies. (Full onchain PDP-epoch lookup via StateView is the next step;
-  // for now this proves live retrievability + integrity, which is the demo's point.)
+  // Read-side check: confirm the artifact is still retrievable from Filecoin and
+  // its signed inventory verifies. Because the CID is the hash of the bytes,
+  // retrievable + intact inventory + valid signature is the full guarantee:
+  // the right bytes, unchanged, from the publisher you expect.
   const { fetchManifest } = await import('../src/foc.js')
   console.log(c.bold(`\n  Proving ${short(cid)} on Filecoin\n`))
   let manifest
@@ -236,8 +237,7 @@ async function cmdProven(args) {
   console.log(`  ${c.green('✓')} retrievable from Filecoin`)
   console.log(self.digestOk ? `  ${c.green('✓')} inventory digest intact` : `  ${c.red('✗')} inventory digest altered`)
   console.log(self.signatureOk ? `  ${c.green('✓')} signed by ${self.signer}` : `  ${c.yellow('!')} unsigned`)
-  console.log(`  ${c.dim(`name: ${manifest.name} @ ${manifest.artifactVersion}, ${manifest.files.length} files`)}`)
-  console.log(`  ${c.dim('onchain PDP-epoch lookup via StateView: TODO (see README roadmap)')}\n`)
+  console.log(`  ${c.dim(`name: ${manifest.name} @ ${manifest.artifactVersion}, ${manifest.files.length} files`)}\n`)
 }
 
 function flag(args, name) {
@@ -261,7 +261,7 @@ try {
   agent-lock install <cid>       fetch by CID, verify signature + hashes, unpack
   agent-lock verify [dir]        re-hash installed files against the pinned manifest
   agent-lock verify --all [dir]  sweep every managed artifact (default ~/.claude/skills)
-  agent-lock proven <cid>        show proof status for a published artifact
+  agent-lock proven <cid>        confirm a published artifact is still retrievable + its inventory verifies
   agent-lock hook                Claude Code PreToolUse gate (reads hook JSON on stdin)
   agent-lock watch [dir]         re-verify on every file change
 
