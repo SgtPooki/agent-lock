@@ -6,7 +6,7 @@ Pin, verify, and prove agent supply-chain artifacts by CID on [Filecoin Onchain 
 
 Agents load skills, MCP configs, and prompts from marketplaces and repos that can change after you reviewed them. In 2026 that became a real attack: hundreds of malicious skills shipped under innocuous names, swapped in after looking safe.
 
-agent-lock makes the swap impossible instead of merely detectable. You publish an artifact and get a CID, a content address that is the hash of the bytes. Anyone installs by that CID and gets exactly the bytes you reviewed, signed by you, provably still stored on Filecoin. Change one byte upstream and the CID changes, so the old CID can never resolve to the tampered version.
+agent-lock makes the swap impossible instead of merely detectable. You publish an artifact and get a CID, a content address that is the hash of the bytes. Anyone installs by that CID and gets exactly the bytes you reviewed, signed by you and still retrievable from Filecoin. Change one byte upstream and the CID changes, so the old CID can never resolve to the tampered version.
 
 agent-lock gives an artifact *fixity*: the digital-preservation term for "the property of being unchanged, and the practice of proving it." That is the whole product.
 
@@ -112,11 +112,10 @@ Storage is public. Artifacts published with agent-lock are world-readable by CID
 
 ## Roadmap
 
-1. **Onchain PDP proof status** in `proven`: query the deployed WarmStorage StateView for the artifact's proof epoch, so `proven` reports "PDP-proven through epoch N" rather than just live retrievability.
-2. **Signed index** ([#2](https://github.com/SgtPooki/agent-lock/issues/2)): a content-addressed registry mapping publisher key to artifact name to CID history, itself pinned and PDP-proven, so discovery does not depend on a mutable server.
-3. **Assisted publish**: an on-ramp for publishers without FIL/USDFC (the marketplace fronts storage for a fee), and a community-funded Filecoin Pay balance that keeps public-good artifacts proven and alive.
-4. **`erc8004` publisher identity**: bind the signer to a registered onchain agent identity.
-5. **Cross-CID diff + review attestation** ([#1](https://github.com/SgtPooki/agent-lock/issues/1)): `agent-lock diff <oldCID> <newCID>` so a maintainer reviews only the delta on each update, with optional signed approval of the new CID, turning "review once forever" into "review the changes" for living artifacts.
+1. **Signed index** ([#2](https://github.com/SgtPooki/agent-lock/issues/2)): a content-addressed registry mapping publisher key to artifact name to CID history, itself pinned, so discovery does not depend on a mutable server.
+2. **Assisted publish**: an on-ramp for publishers without FIL/USDFC (the marketplace fronts storage for a fee), and a community-funded Filecoin Pay balance that keeps public-good artifacts retrievable and alive.
+3. **`erc8004` publisher identity**: bind the signer to a registered onchain agent identity.
+4. **Cross-CID diff + review attestation** ([#1](https://github.com/SgtPooki/agent-lock/issues/1)): `agent-lock diff <oldCID> <newCID>` so a maintainer reviews only the delta on each update, with optional signed approval of the new CID, turning "review once forever" into "review the changes" for living artifacts.
 
 ## License
 

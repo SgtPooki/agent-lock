@@ -3,9 +3,9 @@
  *
  * publish() packs an artifact directory (its files + a signed agent-lock.json) into
  * a UnixFS CAR and uploads to Warm Storage via the Synapse SDK (filecoin-pin
- * core). The IPFS root CID is the integrity anchor; daily PDP proofs then
- * attest the bytes still exist. retrieve() pulls files back by CID over the
- * public gateway, needing no wallet.
+ * core). The IPFS root CID is the integrity anchor: fetching bytes that hash to
+ * the CID proves they are the exact reviewed bytes. retrieve() pulls files back
+ * by CID over the public gateway, needing no wallet.
  */
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
