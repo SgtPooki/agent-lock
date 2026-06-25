@@ -70,6 +70,25 @@ For instant detection during development (independent of any harness), `agent-lo
 
 The honest boundary: the hook gates skills agent-lock manages and that route through the Skill tool. It is not a sandbox; a skill that rewrites its own directory between the SessionStart sweep and invocation is still caught by the PreToolUse gate, but content agent-lock never pinned is outside its scope.
 
+## How this maps to supply-chain guidance
+
+Trail of Bits' [The sorry state of skill distribution](https://blog.trailofbits.com/2026/06/03/the-sorry-state-of-skill-distribution/) found that automated skill scanners give false confidence: they miss truncation padding, `.pyc` poisoning, archive obfuscation, and prompt injection. Its conclusion is classic supply-chain discipline:
+
+> know where your dependencies come from, pin to specific versions, control who can introduce or update them, and don't outsource that judgment to an automated tool.
+
+That covers what to do, not how. agent-lock is the how:
+
+| Guidance | agent-lock |
+| --- | --- |
+| know where your dependencies come from | a wallet publisher signature on the manifest, not a username on a marketplace |
+| pin to specific versions | CID pinning fixes the hash of the bytes, which a mutable version tag does not |
+| control who can introduce or update them | new bytes produce a new CID and signature, and the PreToolUse hook enforces it at runtime |
+| don't outsource that judgment to an automated tool | agent-lock makes no safety judgment of its own, it freezes the review you already did |
+
+Pinning to content rather than a version is the `xz-utils` lesson the article cites. Those victims pinned to versions and still got a backdoored release from a trusted maintainer. Tampered bytes produce a different CID, so the CID you reviewed can never resolve to them.
+
+agent-lock does not detect malicious content. Review malicious bytes, pin them, and it serves that malware faithfully forever. It locks distribution and integrity, not safety. Treating it as a safety check would rebuild the same false confidence the article warns about.
+
 ## CLI
 
 ```
@@ -94,9 +113,10 @@ Storage is public. Artifacts published with agent-lock are world-readable by CID
 ## Roadmap
 
 1. **Onchain PDP proof status** in `proven`: query the deployed WarmStorage StateView for the artifact's proof epoch, so `proven` reports "PDP-proven through epoch N" rather than just live retrievability.
-2. **Signed index**: a content-addressed registry mapping publisher key to artifact name to CID history, itself pinned and PDP-proven, so discovery does not depend on a mutable server.
+2. **Signed index** ([#2](https://github.com/SgtPooki/agent-lock/issues/2)): a content-addressed registry mapping publisher key to artifact name to CID history, itself pinned and PDP-proven, so discovery does not depend on a mutable server.
 3. **Assisted publish**: an on-ramp for publishers without FIL/USDFC (the marketplace fronts storage for a fee), and a community-funded Filecoin Pay balance that keeps public-good artifacts proven and alive.
 4. **`erc8004` publisher identity**: bind the signer to a registered onchain agent identity.
+5. **Cross-CID diff + review attestation** ([#1](https://github.com/SgtPooki/agent-lock/issues/1)): `agent-lock diff <oldCID> <newCID>` so a maintainer reviews only the delta on each update, with optional signed approval of the new CID, turning "review once forever" into "review the changes" for living artifacts.
 
 ## License
 
